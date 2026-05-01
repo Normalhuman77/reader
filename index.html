@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    <title>Minimal Reader</title>
+    <style>
+        :root {
+            --bg-color: #F5F5DC;
+            --text-color: #333333;
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            overflow: hidden; /* 禁止橡皮筋回弹 */
+            position: fixed;
+        }
+
+        /* 容器布局 */
+        #app {
+            display: flex;
+            flex-direction: column;
+            width: 100vw;
+            height: 100vh;
+            padding-top: var(--safe-top);
+            padding-bottom: var(--safe-bottom);
+        }
+
+        /* 顶部栏 */
+        header {
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-size: 14px;
+            opacity: 0.6;
+            z-index: 10;
+        }
+
+        /* 阅读主区域 */
+        #viewer {
+            flex: 1;
+            padding: 10px 24px;
+            font-size: 20px;
+            line-height: 1.6;
+            text-align: justify;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #content-target {
+            width: 100%;
+            height: 100%;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* 交互遮罩 */
+        #touch-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            z-index: 5;
+        }
+        #prev-zone { width: 30%; }
+        #next-zone { width: 70%; }
+
+        /* 底部信息 */
+        footer {
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            opacity: 0.4;
+        }
+
+        /* 欢迎界面 */
+        #welcome {
+            position: absolute;
+            inset: 0;
+            background: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        .btn {
+            background: #333;
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            border: none;
+            font-size: 16px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        input[type="file"] { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <header>
+            <span id="file-name">未加载文档</span>
+            <span id="progress">0%</span>
+        </header>
+
+        <main id="viewer">
+            <div id="content-target"></div>
+            <div id="touch-layer">
+                <div id="prev-zone"></div>
+                <div id="next-zone"></div>
+            </div>
+        </main>
+
+        <footer>
+            <span id="page-info">第 0 页</span>
+        </footer>
+    </div>
+
+    <!-- 欢迎/文件选择 -->
+    <div id="welcome">
+        <h2 style="margin-bottom: 30px; font-weight: 300;">Minimal Reader</h2>
+        <button class="btn" onclick="document.getElementById('fileInput').click()">选择 TXT 文件</button>
+        <input type="file" id="fileInput" accept=".txt">
+    </div>
+
+    <script>
+        // --- 核心状态 ---
+        let fullText = "";
+        let fileName = "";
+        let currentOffset = 0; // 字符偏移量
+        let historyData = {};
+
+        const dom = {
+            welcome: document.getElementById('welcome'),
+            content: document.getElementById('content-target'),
+            fileName: document.getElementById('file-name'),
+            progress: document.getElementById('progress'),
+            pageInfo: document.getElementById('page-info'),
+            fileInput: document.getElementById('fileInput'),
+            viewer: document.getElementById('viewer')
+        };
+
+        // --- 初始化 ---
+        window.onload = () => {
+            loadHistory();
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js');
+            }
+        };
+
+        // --- 文件读取 ---
+        dom.fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            fileName = file.name;
+            const reader = new FileReader();
+
+            // 自动检测编码逻辑
+            reader.onload = (evt) => {
+                const buffer = evt.target.result;
+                const view = new Uint8Array(buffer);
+                
+                // 简单的 GBK/UTF-8 启发式检测
+                let encoding = 'utf-8';
+                for (let i = 0; i < view.length; i++) {
+                    if (view[i] > 0x80) {
+                        // 如果不符合 UTF-8 序列规律，很有可能是 GBK
+                        if (!(view[i] >= 0xc0 && view[i] <= 0xfd)) {
+                            encoding = 'gbk';
+                            break;
+                        }
+                    }
+                }
+
+                const decoder = new TextDecoder(encoding);
+                fullText = decoder.decode(buffer);
+                startReading();
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        function startReading() {
+            dom.welcome.style.display = 'none';
+            dom.fileName.innerText = fileName;
+            
+            // 恢复该文件的历史进度
+            currentOffset = historyData[fileName] || 0;
+            renderPage();
+        }
+
+        // --- 分页逻辑 ---
+        function renderPage() {
+            // 将偏移量之后的内容放入容器，计算溢出
+            const containerHeight = dom.viewer.clientHeight;
+            const textToRender = fullText.substring(currentOffset);
+            
+            // 模拟渲染以找到截断点
+            dom.content.innerText = textToRender;
+            
+            // 使用二分法或逐步探测找到当前高度能容纳的字符数
+            let low = 0;
+            let high = textToRender.length;
+            let bestEnd = 0;
+
+            // 为了性能，先根据大致比例猜测
+            // 实际上在 iOS 上实时获取 scrollHeight 是准确的
+            while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                dom.content.innerText = textToRender.substring(0, mid);
+                if (dom.content.scrollHeight <= containerHeight) {
+                    bestEnd = mid;
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+
+            // 最终渲染
+            const finalPageText = textToRender.substring(0, bestEnd);
+            dom.content.innerText = finalPageText;
+            
+            updateUI(bestEnd);
+            saveHistory();
+        }
+
+        function updateUI(pageSize) {
+            const percent = ((currentOffset / fullText.length) * 100).toFixed(1);
+            dom.progress.innerText = percent + "%";
+            dom.pageInfo.innerText = `进度: ${Math.floor(currentOffset)} / ${fullText.length} 字符`;
+        }
+
+        // --- 交互 ---
+        document.getElementById('next-zone').onclick = () => {
+            const containerHeight = dom.viewer.clientHeight;
+            // 找到当前显示的字符数
+            let currentDisplayCount = dom.content.innerText.length;
+            if (currentOffset + currentDisplayCount < fullText.length) {
+                currentOffset += currentDisplayCount;
+                renderPage();
+            }
+        };
+
+        document.getElementById('prev-zone').onclick = () => {
+            if (currentOffset <= 0) return;
+
+            // 往回翻页较为复杂：需要估算前一页的起点
+            // 这里采用反向探测：尝试往前推一个屏幕大约的字符量
+            const containerHeight = dom.viewer.clientHeight;
+            let estimate = 500; // 初始步长
+            let start = Math.max(0, currentOffset - estimate);
+            
+            // 找到一个 start，使得从 start 到 currentOffset 的内容刚好填满一页
+            dom.content.innerText = fullText.substring(start, currentOffset);
+            while (dom.content.scrollHeight < containerHeight && start > 0) {
+                start = Math.max(0, start - 100);
+                dom.content.innerText = fullText.substring(start, currentOffset);
+            }
+            
+            // 再次精修起点
+            let low = start;
+            let high = currentOffset;
+            let bestStart = start;
+            while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                dom.content.innerText = fullText.substring(mid, currentOffset);
+                if (dom.content.scrollHeight <= containerHeight) {
+                    bestStart = mid;
+                    high = mid - 1;
+                } else {
+                    low = mid + 1;
+                }
+            }
+
+            currentOffset = bestStart;
+            renderPage();
+        };
+
+        // --- 持久化 ---
+        function saveHistory() {
+            historyData[fileName] = currentOffset;
+            localStorage.setItem('minimal_reader_history', JSON.stringify(historyData));
+        }
+
+        function loadHistory() {
+            const saved = localStorage.getItem('minimal_reader_history');
+            if (saved) {
+                historyData = JSON.parse(saved);
+            }
+        }
+
+        // 禁止 iOS 的弹性滚动
+        document.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 1) e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>
