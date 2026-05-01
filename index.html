@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Minimal Reader</title>
+    <!-- PWA Manifest -->
+    <link rel="manifest" id="manifest-placeholder">
+    <style>
+        :root {
+            --bg-color: #F5F5DC;
+            --text-color: #333333;
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* 禁止橡皮筋效果 */
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-color);
+        }
+
+        /* 主容器 */
+        #app {
+            display: flex;
+            flex-direction: column;
+            width: 100vw;
+            height: 100vh;
+            padding-top: var(--safe-top);
+            padding-bottom: var(--safe-bottom);
+        }
+
+        /* 阅读区域 */
+        #viewer {
+            flex: 1;
+            padding: 20px 25px;
+            font-size: 19px;
+            line-height: 1.6;
+            text-align: justify;
+            overflow: hidden;
+            position: relative;
+            word-break: break-all;
+        }
+
+        /* 底部状态栏 */
+        #status-bar {
+            height: 30px;
+            padding: 0 20px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            opacity: 0.6;
+        }
+
+        /* 引导页 */
+        #landing {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: var(--bg-color);
+            z-index: 10;
+        }
+
+        .btn {
+            background: var(--text-color);
+            color: var(--bg-color);
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* 点击区域辅助视觉（可选） */
+        #click-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            z-index: 5;
+        }
+        #prev-zone { width: 30%; }
+        #next-zone { width: 70%; }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <!-- 初始导入界面 -->
+        <div id="landing">
+            <h1 style="margin-bottom: 30px; font-weight: 300;">Minimal Reader</h1>
+            <button class="btn" onclick="document.getElementById('fileInput').click()">选择 TXT 文件</button>
+            <p style="margin-top: 20px; font-size: 13px; color: #888;">文件将保存在本地阅读</p>
+        </div>
+
+        <!-- 阅读主体 -->
+        <div id="viewer">
+            <div id="content"></div>
+            <div id="click-overlay">
+                <div id="prev-zone"></div>
+                <div id="next-zone"></div>
+            </div>
+        </div>
+
+        <!-- 进度状态 -->
+        <div id="status-bar">
+            <span id="file-name">未加载</span>
+            <span id="page-info">0 / 0</span>
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" accept=".txt">
+
+    <script>
+        /**
+         * 核心逻辑模块
+         */
+        const state = {
+            fullText: '',
+            fileName: '',
+            charOffset: 0, // 当前页起始字符位置
+            pageSize: 0    // 每页容纳的字数（动态计算）
+        };
+
+        const elements = {
+            viewer: document.getElementById('viewer'),
+            content: document.getElementById('content'),
+            landing: document.getElementById('landing'),
+            fileInput: document.getElementById('fileInput'),
+            fileNameDisp: document.getElementById('file-name'),
+            pageInfo: document.getElementById('page-info'),
+            prevZone: document.getElementById('prev-zone'),
+            nextZone: document.getElementById('next-zone')
+        };
+
+        // 1. 文件读取与编码处理
+        elements.fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            state.fileName = file.name;
+            const reader = new FileReader();
+
+            // 预读取一部分字节来判断编码
+            const blob = file.slice(0, 1000);
+            const probeReader = new FileReader();
+            probeReader.onload = (event) => {
+                const buffer = event.target.result;
+                const view = new Uint8Array(buffer);
+                
+                // 简单的中文编码判定
+                let encoding = 'utf-8';
+                for (let i = 0; i < view.length; i++) {
+                    if (view[i] > 127) {
+                        // 如果有高位字节，尝试检测是否符合 UTF-8 序列
+                        if (!isUTF8(view)) encoding = 'gbk';
+                        break;
+                    }
+                }
+
+                reader.readAsText(file, encoding);
+            };
+            probeReader.readAsArrayBuffer(blob);
+
+            reader.onload = (e) => {
+                state.fullText = e.target.result.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                state.charOffset = parseInt(localStorage.getItem(`offset_${state.fileName}`)) || 0;
+                initReader();
+            };
+        });
+
+        function isUTF8(bytes) {
+            let i = 0;
+            while (i < bytes.length) {
+                if (bytes[i] <= 0x7F) i += 1;
+                else if (bytes[i] >= 0xC2 && bytes[i] <= 0xDF) i += 2;
+                else if (bytes[i] >= 0xE0 && bytes[i] <= 0xEF) i += 3;
+                else if (bytes[i] >= 0xF0 && bytes[i] <= 0xF4) i += 4;
+                else return false;
+            }
+            return true;
+        }
+
+        // 2. 阅读器初始化与渲染
+        function initReader() {
+            elements.landing.style.display = 'none';
+            elements.fileNameDisp.innerText = state.fileName;
+            renderPage();
+        }
+
+        function renderPage() {
+            // 确保 offset 不越界
+            if (state.charOffset < 0) state.charOffset = 0;
+            if (state.charOffset >= state.fullText.length) state.charOffset = state.fullText.length - 100;
+
+            // 动态测量：将一段文字放入容器，看它占用了多少空间，从而截断
+            const containerHeight = elements.viewer.clientHeight - 40; // 减去 padding
+            let testEnd = state.charOffset + 2000; // 预估一页最多2000字
+            let textChunk = state.fullText.substring(state.charOffset, testEnd);
+            
+            elements.content.innerText = textChunk;
+            
+            // 循环截断，直到内容不溢出高度
+            let low = state.charOffset;
+            let high = testEnd;
+            let bestEnd = state.charOffset;
+
+            // 二分法寻找最佳截断点以保证性能
+            while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                elements.content.innerText = state.fullText.substring(state.charOffset, mid);
+                if (elements.content.offsetHeight <= containerHeight) {
+                    bestEnd = mid;
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+
+            // 最终呈现
+            state.pageSize = bestEnd - state.charOffset;
+            elements.content.innerText = state.fullText.substring(state.charOffset, bestEnd);
+            
+            // 更新进度
+            const progress = ((state.charOffset / state.fullText.length) * 100).toFixed(1);
+            elements.pageInfo.innerText = `${progress}%`;
+
+            // 记忆位置
+            localStorage.setItem(`offset_${state.fileName}`, state.charOffset);
+        }
+
+        // 3. 翻页交互
+        elements.prevZone.onclick = () => {
+            if (state.charOffset <= 0) return;
+            
+            // 往前翻页较为复杂，简单做法是减去一页大概的字数，然后重绘
+            state.charOffset -= state.pageSize || 500;
+            if (state.charOffset < 0) state.charOffset = 0;
+            renderPage();
+        };
+
+        elements.nextZone.onclick = () => {
+            if (state.charOffset + state.pageSize >= state.fullText.length) return;
+            
+            state.charOffset += state.pageSize;
+            renderPage();
+        };
+
+        // 禁止 iOS 橡皮筋回弹
+        document.body.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        // 4. PWA 资源配置 (Data URI 方式)
+        const manifest = {
+            "name": "Minimal Reader",
+            "short_name": "Reader",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#F5F5DC",
+            "theme_color": "#F5F5DC",
+            "icons": [{
+                "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23333'/><text x='50%27 y='50%27 dominant-baseline='central' text-anchor='middle' fill='%23F5F5DC' font-size='50'>R</text></svg>",
+                "sizes": "192x192",
+                "type": "image/svg+xml"
+            }]
+        };
+        document.getElementById('manifest-placeholder').setAttribute('href', 'data:application/json;base64,' + btoa(JSON.stringify(manifest)));
+
+        // 注册简易 Service Worker 以支持离线
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                const CACHE_NAME = 'reader-v1';
+                self.addEventListener('install', e => {
+                    e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['./'])));
+                });
+                self.addEventListener('fetch', e => {
+                    e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
+                });
+            `;
+            const blob = new Blob([swCode], {type: 'text/javascript'});
+            navigator.serviceWorker.register(URL.createObjectURL(blob));
+        }
+    </script>
+</body>
+</html>
