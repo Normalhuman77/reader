@@ -5,20 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-title" content="极简阅读">
     <title>Minimal Reader</title>
+    <link id="manifest-link" rel="manifest">
     <style>
         :root {
             --bg-color: #F5F5DC;
             --text-color: #333333;
-            --safe-top: env(safe-area-inset-top);
-            --safe-bottom: env(safe-area-inset-bottom);
+            --font-size: 20px;
+            --line-height: 1.6;
+        }
+
+        /* 深色模式变量 */
+        body.dark-mode {
+            --bg-color: #1a1a1a;
+            --text-color: #cccccc;
         }
 
         * {
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
-            user-select: none;
         }
 
         body, html {
@@ -28,298 +34,288 @@
             height: 100%;
             background-color: var(--bg-color);
             color: var(--text-color);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-            overflow: hidden; /* 禁止橡皮筋回弹 */
-            position: fixed;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+            overflow: hidden;
+            transition: background-color 0.3s, color 0.3s;
         }
 
-        /* 容器布局 */
         #app {
             display: flex;
             flex-direction: column;
-            width: 100vw;
+            width: 100%;
             height: 100vh;
-            padding-top: var(--safe-top);
-            padding-bottom: var(--safe-bottom);
+            padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
         }
 
-        /* 顶部栏 */
-        header {
-            height: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-            font-size: 14px;
-            opacity: 0.6;
-            z-index: 10;
-        }
-
-        /* 阅读主区域 */
-        #viewer {
+        #reader-content {
             flex: 1;
-            padding: 10px 24px;
-            font-size: 20px;
-            line-height: 1.6;
+            padding: 20px 25px;
+            font-size: var(--font-size);
+            line-height: var(--line-height);
             text-align: justify;
             overflow: hidden;
             position: relative;
-        }
-
-        #content-target {
-            width: 100%;
-            height: 100%;
             white-space: pre-wrap;
-            word-break: break-all;
+            word-wrap: break-word;
         }
 
-        /* 交互遮罩 */
-        #touch-layer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            z-index: 5;
-        }
-        #prev-zone { width: 30%; }
-        #next-zone { width: 70%; }
-
-        /* 底部信息 */
-        footer {
+        #status-bar {
             height: 30px;
+            font-size: 11px;
+            color: #888;
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            opacity: 0.4;
+            padding: 0 25px;
+            opacity: 0.6;
         }
 
-        /* 欢迎界面 */
-        #welcome {
-            position: absolute;
-            inset: 0;
+        #upload-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
             background: var(--bg-color);
             display: flex;
             flex-direction: column;
-            align-items: center;
             justify-content: center;
-            z-index: 20;
+            align-items: center;
+            z-index: 100;
         }
 
         .btn {
-            background: #333;
-            color: #fff;
-            padding: 12px 24px;
+            padding: 12px 30px;
+            background: #444;
+            color: white;
             border-radius: 25px;
-            border: none;
             font-size: 16px;
-            font-weight: 500;
+            cursor: pointer;
+            border: none;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
         input[type="file"] { display: none; }
+
+        #touch-zones {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            z-index: 10;
+        }
+        #prev-zone { width: 30%; }
+        #next-zone { width: 70%; }
+
+        /* 设置面板 */
+        #settings-panel {
+            position: fixed;
+            bottom: -250px;
+            left: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px 20px 0 0;
+            padding: 20px;
+            z-index: 1000;
+            transition: bottom 0.3s ease;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+            color: #333;
+        }
+        body.dark-mode #settings-panel {
+            background: rgba(40, 40, 40, 0.95);
+            color: #eee;
+        }
+        #settings-panel.active { bottom: 0; }
+
+        .setting-item {
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .theme-dots { display: flex; gap: 15px; }
+        .dot { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+        .dot.active { border-color: #007aff; }
     </style>
 </head>
 <body>
 
-    <div id="app">
-        <header>
-            <span id="file-name">未加载文档</span>
-            <span id="progress">0%</span>
-        </header>
-
-        <main id="viewer">
-            <div id="content-target"></div>
-            <div id="touch-layer">
-                <div id="prev-zone"></div>
-                <div id="next-zone"></div>
-            </div>
-        </main>
-
-        <footer>
-            <span id="page-info">第 0 页</span>
-        </footer>
+<div id="app">
+    <div id="upload-overlay">
+        <h2 style="margin-bottom: 40px; font-weight: 300; letter-spacing: 2px;">Minimal Reader</h2>
+        <label class="btn" for="file-input">打开本地文档</label>
+        <input type="file" id="file-input" accept=".txt">
+        <p id="last-info" style="margin-top: 30px; font-size: 12px; color: #999;"></p>
     </div>
 
-    <!-- 欢迎/文件选择 -->
-    <div id="welcome">
-        <h2 style="margin-bottom: 30px; font-weight: 300;">Minimal Reader</h2>
-        <button class="btn" onclick="document.getElementById('fileInput').click()">选择 TXT 文件</button>
-        <input type="file" id="fileInput" accept=".txt">
+    <div id="reader-content">
+        <div id="text-display"></div>
+        <div id="touch-zones">
+            <div id="prev-zone"></div>
+            <div id="mid-zone" style="width:40%"></div> <!-- 中间区域唤起设置 -->
+            <div id="next-zone" style="width:30%"></div>
+        </div>
     </div>
 
-    <script>
-        // --- 核心状态 ---
-        let fullText = "";
-        let fileName = "";
-        let currentOffset = 0; // 字符偏移量
-        let historyData = {};
+    <div id="status-bar">
+        <span id="file-name">未加载</span>
+        <span id="page-info">0%</span>
+    </div>
+</div>
 
-        const dom = {
-            welcome: document.getElementById('welcome'),
-            content: document.getElementById('content-target'),
-            fileName: document.getElementById('file-name'),
-            progress: document.getElementById('progress'),
-            pageInfo: document.getElementById('page-info'),
-            fileInput: document.getElementById('fileInput'),
-            viewer: document.getElementById('viewer')
-        };
+<div id="settings-panel">
+    <div class="setting-item">
+        <span>字体大小</span>
+        <div>
+            <button onclick="changeFontSize(-2)" style="padding:5px 15px">-</button>
+            <span id="font-size-val" style="margin:0 10px">20</span>
+            <button onclick="changeFontSize(2)" style="padding:5px 15px">+</button>
+        </div>
+    </div>
+    <div class="setting-item">
+        <span>主题</span>
+        <div class="theme-dots">
+            <div class="dot" style="background:#F5F5DC;" onclick="setTheme('sepia')"></div>
+            <div class="dot" style="background:#ffffff;" onclick="setTheme('white')"></div>
+            <div class="dot" style="background:#1a1a1a;" onclick="setTheme('dark')"></div>
+        </div>
+    </div>
+    <button class="btn" style="width:100%; margin-top:10px;" onclick="toggleSettings()">关闭设置</button>
+</div>
 
-        // --- 初始化 ---
-        window.onload = () => {
-            loadHistory();
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('sw.js');
+<script>
+    const CONFIG = {
+        STORAGE_KEY_PREFIX: 'min_reader_pos_',
+        LAST_FILE: 'min_reader_last_file',
+        FONT_SIZE: 'min_reader_font_size',
+        THEME: 'min_reader_theme'
+    };
+
+    let fullText = "";
+    let currentFileName = "";
+    let pages = [];
+    let currentPageIndex = 0;
+
+    // 初始化设置
+    window.onload = () => {
+        const savedSize = localStorage.getItem(CONFIG.FONT_SIZE) || 20;
+        document.documentElement.style.setProperty('--font-size', savedSize + 'px');
+        document.getElementById('font-size-val').textContent = savedSize;
+        
+        const savedTheme = localStorage.getItem(CONFIG.THEME) || 'sepia';
+        setTheme(savedTheme);
+
+        const lastFile = localStorage.getItem(CONFIG.LAST_FILE);
+        if(lastFile) document.getElementById('last-info').textContent = "上次阅读: " + lastFile;
+    };
+
+    // 1. 文件处理
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const buffer = await file.arrayBuffer();
+        const decoder = new TextDecoder(detectEncoding(new Uint8Array(buffer)));
+        fullText = decoder.decode(buffer).replace(/\r\n/g, '\n');
+        
+        currentFileName = file.name;
+        document.getElementById('upload-overlay').style.display = 'none';
+        document.getElementById('file-name').textContent = currentFileName;
+        localStorage.setItem(CONFIG.LAST_FILE, currentFileName);
+
+        paginate();
+        const savedOffset = localStorage.getItem(CONFIG.STORAGE_KEY_PREFIX + currentFileName);
+        jumpToOffset(savedOffset ? parseInt(savedOffset) : 0);
+    });
+
+    function detectEncoding(bytes) {
+        let isUtf8 = true;
+        for (let i = 0; i < Math.min(bytes.length, 1000); i++) {
+            if (bytes[i] > 0x7F) {
+                if ((bytes[i] & 0xE0) === 0xC0 && (bytes[i+1] & 0xC0) === 0x80) { i++; continue; }
+                if ((bytes[i] & 0xF0) === 0xE0 && (bytes[i+1] & 0xC0) === 0x80 && (bytes[i+2] & 0xC0) === 0x80) { i+=2; continue; }
+                isUtf8 = false; break;
             }
-        };
-
-        // --- 文件读取 ---
-        dom.fileInput.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            fileName = file.name;
-            const reader = new FileReader();
-
-            // 自动检测编码逻辑
-            reader.onload = (evt) => {
-                const buffer = evt.target.result;
-                const view = new Uint8Array(buffer);
-                
-                // 简单的 GBK/UTF-8 启发式检测
-                let encoding = 'utf-8';
-                for (let i = 0; i < view.length; i++) {
-                    if (view[i] > 0x80) {
-                        // 如果不符合 UTF-8 序列规律，很有可能是 GBK
-                        if (!(view[i] >= 0xc0 && view[i] <= 0xfd)) {
-                            encoding = 'gbk';
-                            break;
-                        }
-                    }
-                }
-
-                const decoder = new TextDecoder(encoding);
-                fullText = decoder.decode(buffer);
-                startReading();
-            };
-            reader.readAsArrayBuffer(file);
-        };
-
-        function startReading() {
-            dom.welcome.style.display = 'none';
-            dom.fileName.innerText = fileName;
-            
-            // 恢复该文件的历史进度
-            currentOffset = historyData[fileName] || 0;
-            renderPage();
         }
+        return isUtf8 ? 'utf-8' : 'gbk';
+    }
 
-        // --- 分页逻辑 ---
-        function renderPage() {
-            // 将偏移量之后的内容放入容器，计算溢出
-            const containerHeight = dom.viewer.clientHeight;
-            const textToRender = fullText.substring(currentOffset);
-            
-            // 模拟渲染以找到截断点
-            dom.content.innerText = textToRender;
-            
-            // 使用二分法或逐步探测找到当前高度能容纳的字符数
-            let low = 0;
-            let high = textToRender.length;
-            let bestEnd = 0;
+    // 2. 分页逻辑
+    function paginate() {
+        const container = document.getElementById('reader-content');
+        const h = container.clientHeight - 40;
+        const w = container.clientWidth - 50;
+        
+        const temp = document.createElement('div');
+        temp.style.cssText = `visibility:hidden;position:absolute;width:${w}px;font-size:var(--font-size);line-height:var(--line-height);white-space:pre-wrap;word-wrap:break-word;`;
+        document.body.appendChild(temp);
 
-            // 为了性能，先根据大致比例猜测
-            // 实际上在 iOS 上实时获取 scrollHeight 是准确的
-            while (low <= high) {
-                let mid = Math.floor((low + high) / 2);
-                dom.content.innerText = textToRender.substring(0, mid);
-                if (dom.content.scrollHeight <= containerHeight) {
+        pages = [];
+        let start = 0;
+        while (start < fullText.length) {
+            let l = start, r = start + 3000; 
+            let bestEnd = start + 1;
+            while (l <= r) {
+                let mid = Math.floor((l + r) / 2);
+                temp.textContent = fullText.substring(start, mid);
+                if (temp.clientHeight <= h) {
                     bestEnd = mid;
-                    low = mid + 1;
+                    l = mid + 1;
                 } else {
-                    high = mid - 1;
+                    r = mid - 1;
                 }
             }
-
-            // 最终渲染
-            const finalPageText = textToRender.substring(0, bestEnd);
-            dom.content.innerText = finalPageText;
-            
-            updateUI(bestEnd);
-            saveHistory();
+            pages.push({ start, end: bestEnd });
+            start = bestEnd;
         }
+        document.body.removeChild(temp);
+    }
 
-        function updateUI(pageSize) {
-            const percent = ((currentOffset / fullText.length) * 100).toFixed(1);
-            dom.progress.innerText = percent + "%";
-            dom.pageInfo.innerText = `进度: ${Math.floor(currentOffset)} / ${fullText.length} 字符`;
+    function renderPage(idx) {
+        if (idx < 0 || idx >= pages.length) return;
+        currentPageIndex = idx;
+        const p = pages[idx];
+        document.getElementById('text-display').textContent = fullText.substring(p.start, p.end);
+        document.getElementById('page-info').textContent = Math.round((idx+1)/pages.length*100) + "%";
+        localStorage.setItem(CONFIG.STORAGE_KEY_PREFIX + currentFileName, p.start);
+    }
+
+    function jumpToOffset(offset) {
+        const idx = pages.findIndex(p => offset >= p.start && offset < p.end);
+        renderPage(idx !== -1 ? idx : 0);
+    }
+
+    // 3. 设置功能
+    function toggleSettings() {
+        document.getElementById('settings-panel').classList.toggle('active');
+    }
+
+    function changeFontSize(delta) {
+        let size = parseInt(document.getElementById('font-size-val').textContent) + delta;
+        size = Math.max(12, Math.min(40, size));
+        document.getElementById('font-size-val').textContent = size;
+        document.documentElement.style.setProperty('--font-size', size + 'px');
+        localStorage.setItem(CONFIG.FONT_SIZE, size);
+        if(fullText) {
+            const offset = pages[currentPageIndex].start;
+            paginate();
+            jumpToOffset(offset);
         }
+    }
 
-        // --- 交互 ---
-        document.getElementById('next-zone').onclick = () => {
-            const containerHeight = dom.viewer.clientHeight;
-            // 找到当前显示的字符数
-            let currentDisplayCount = dom.content.innerText.length;
-            if (currentOffset + currentDisplayCount < fullText.length) {
-                currentOffset += currentDisplayCount;
-                renderPage();
-            }
-        };
+    function setTheme(type) {
+        document.body.classList.remove('dark-mode');
+        if (type === 'sepia') document.documentElement.style.setProperty('--bg-color', '#F5F5DC');
+        if (type === 'white') document.documentElement.style.setProperty('--bg-color', '#ffffff');
+        if (type === 'dark') document.body.classList.add('dark-mode');
+        localStorage.setItem(CONFIG.THEME, type);
+    }
 
-        document.getElementById('prev-zone').onclick = () => {
-            if (currentOffset <= 0) return;
+    // 4. 事件绑定
+    document.getElementById('prev-zone').onclick = () => renderPage(currentPageIndex - 1);
+    document.getElementById('next-zone').onclick = () => renderPage(currentPageIndex + 1);
+    document.getElementById('mid-zone').onclick = toggleSettings;
 
-            // 往回翻页较为复杂：需要估算前一页的起点
-            // 这里采用反向探测：尝试往前推一个屏幕大约的字符量
-            const containerHeight = dom.viewer.clientHeight;
-            let estimate = 500; // 初始步长
-            let start = Math.max(0, currentOffset - estimate);
-            
-            // 找到一个 start，使得从 start 到 currentOffset 的内容刚好填满一页
-            dom.content.innerText = fullText.substring(start, currentOffset);
-            while (dom.content.scrollHeight < containerHeight && start > 0) {
-                start = Math.max(0, start - 100);
-                dom.content.innerText = fullText.substring(start, currentOffset);
-            }
-            
-            // 再次精修起点
-            let low = start;
-            let high = currentOffset;
-            let bestStart = start;
-            while (low <= high) {
-                let mid = Math.floor((low + high) / 2);
-                dom.content.innerText = fullText.substring(mid, currentOffset);
-                if (dom.content.scrollHeight <= containerHeight) {
-                    bestStart = mid;
-                    high = mid - 1;
-                } else {
-                    low = mid + 1;
-                }
-            }
-
-            currentOffset = bestStart;
-            renderPage();
-        };
-
-        // --- 持久化 ---
-        function saveHistory() {
-            historyData[fileName] = currentOffset;
-            localStorage.setItem('minimal_reader_history', JSON.stringify(historyData));
-        }
-
-        function loadHistory() {
-            const saved = localStorage.getItem('minimal_reader_history');
-            if (saved) {
-                historyData = JSON.parse(saved);
-            }
-        }
-
-        // 禁止 iOS 的弹性滚动
-        document.addEventListener('touchmove', (e) => {
-            if (e.touches.length > 1) e.preventDefault();
-        }, { passive: false });
-    </script>
+    // 阻止回弹
+    document.addEventListener('touchmove', e => { if(e.touches.length==1) e.preventDefault(); }, {passive:false});
+</script>
 </body>
 </html>
