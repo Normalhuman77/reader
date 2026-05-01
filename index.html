@@ -5,21 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="极简阅读">
+    <link rel="manifest" href="manifest.json">
     <title>Minimal Reader</title>
-    <link id="manifest-link" rel="manifest">
     <style>
         :root {
             --bg-color: #F5F5DC;
             --text-color: #333333;
-            --font-size: 20px;
-            --line-height: 1.6;
-        }
-
-        /* 深色模式变量 */
-        body.dark-mode {
-            --bg-color: #1a1a1a;
-            --text-color: #cccccc;
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
         }
 
         * {
@@ -32,290 +25,295 @@
             padding: 0;
             width: 100%;
             height: 100%;
+            overflow: hidden; /* 禁止橡皮筋效果 */
             background-color: var(--bg-color);
+            font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
             color: var(--text-color);
-            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
-            overflow: hidden;
-            transition: background-color 0.3s, color 0.3s;
         }
 
-        #app {
+        /* 欢迎页面 */
+        #welcome-screen {
             display: flex;
             flex-direction: column;
-            width: 100%;
-            height: 100vh;
-            padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
-        }
-
-        #reader-content {
-            flex: 1;
-            padding: 20px 25px;
-            font-size: var(--font-size);
-            line-height: var(--line-height);
-            text-align: justify;
-            overflow: hidden;
-            position: relative;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-
-        #status-bar {
-            height: 30px;
-            font-size: 11px;
-            color: #888;
-            display: flex;
-            justify-content: space-between;
             align-items: center;
-            padding: 0 25px;
-            opacity: 0.6;
-        }
-
-        #upload-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--bg-color);
-            display: flex;
-            flex-direction: column;
             justify-content: center;
-            align-items: center;
-            z-index: 100;
+            height: 100vh;
+            padding: 20px;
+            text-align: center;
         }
 
-        .btn {
-            padding: 12px 30px;
-            background: #444;
-            color: white;
+        .upload-btn {
+            background-color: var(--text-color);
+            color: var(--bg-color);
+            padding: 15px 40px;
             border-radius: 25px;
-            font-size: 16px;
+            font-size: 18px;
             cursor: pointer;
             border: none;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
-        input[type="file"] { display: none; }
-
-        #touch-zones {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            display: flex;
-            z-index: 10;
+        /* 阅读界面 */
+        #reader-screen {
+            display: none;
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            padding: calc(var(--safe-top) + 20px) 20px calc(var(--safe-bottom) + 20px) 20px;
         }
-        #prev-zone { width: 30%; }
-        #next-zone { width: 70%; }
 
-        /* 设置面板 */
-        #settings-panel {
-            position: fixed;
-            bottom: -250px;
+        #content-area {
+            width: 100%;
+            height: 100%;
+            font-size: 20px;
+            line-height: 1.6;
+            overflow: hidden;
+            word-break: break-all;
+            text-align: justify;
+        }
+
+        /* 交互层 */
+        #interaction-layer {
+            position: absolute;
+            top: 0;
             left: 0;
             width: 100%;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px 20px 0 0;
-            padding: 20px;
-            z-index: 1000;
-            transition: bottom 0.3s ease;
-            box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
-            color: #333;
+            height: 100%;
+            z-index: 10;
+            display: flex;
         }
-        body.dark-mode #settings-panel {
-            background: rgba(40, 40, 40, 0.95);
-            color: #eee;
-        }
-        #settings-panel.active { bottom: 0; }
 
-        .setting-item {
-            margin: 15px 0;
+        #prev-zone { width: 30%; height: 100%; }
+        #next-zone { width: 70%; height: 100%; }
+
+        /* 顶部/底部信息 */
+        #meta-info {
+            position: absolute;
+            bottom: var(--safe-bottom);
+            left: 0;
+            width: 100%;
+            padding: 5px 20px;
+            font-size: 12px;
+            color: #888;
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            pointer-events: none;
         }
 
-        .theme-dots { display: flex; gap: 15px; }
-        .dot { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
-        .dot.active { border-color: #007aff; }
+        #back-btn {
+            position: absolute;
+            top: var(--safe-top);
+            right: 20px;
+            font-size: 14px;
+            color: #888;
+            padding: 10px;
+            z-index: 20;
+            text-decoration: underline;
+        }
+
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-<div id="app">
-    <div id="upload-overlay">
-        <h2 style="margin-bottom: 40px; font-weight: 300; letter-spacing: 2px;">Minimal Reader</h2>
-        <label class="btn" for="file-input">打开本地文档</label>
-        <input type="file" id="file-input" accept=".txt">
-        <p id="last-info" style="margin-top: 30px; font-size: 12px; color: #999;"></p>
+    <div id="welcome-screen">
+        <h1>Minimal Reader</h1>
+        <p style="color: #666; margin-bottom: 30px;">点击下方按钮导入 TXT 文档</p>
+        <input type="file" id="file-input" accept=".txt" style="display: none;">
+        <button class="upload-btn" onclick="document.getElementById('file-input').click()">选择文件</button>
     </div>
 
-    <div id="reader-content">
-        <div id="text-display"></div>
-        <div id="touch-zones">
+    <div id="reader-screen">
+        <div id="back-btn">切换文档</div>
+        <div id="content-area"></div>
+        <div id="interaction-layer">
             <div id="prev-zone"></div>
-            <div id="mid-zone" style="width:40%"></div> <!-- 中间区域唤起设置 -->
-            <div id="next-zone" style="width:30%"></div>
+            <div id="next-zone"></div>
+        </div>
+        <div id="meta-info">
+            <span id="book-title"></span>
+            <span id="progress-pct">0%</span>
         </div>
     </div>
 
-    <div id="status-bar">
-        <span id="file-name">未加载</span>
-        <span id="page-info">0%</span>
-    </div>
-</div>
+    <script>
+        const DB_NAME = 'ReaderDB';
+        const STORE_NAME = 'books';
+        let db;
+        let currentContent = '';
+        let currentFileName = '';
+        let currentOffset = 0;
+        let pages = [];
+        let currentPageIndex = 0;
 
-<div id="settings-panel">
-    <div class="setting-item">
-        <span>字体大小</span>
-        <div>
-            <button onclick="changeFontSize(-2)" style="padding:5px 15px">-</button>
-            <span id="font-size-val" style="margin:0 10px">20</span>
-            <button onclick="changeFontSize(2)" style="padding:5px 15px">+</button>
-        </div>
-    </div>
-    <div class="setting-item">
-        <span>主题</span>
-        <div class="theme-dots">
-            <div class="dot" style="background:#F5F5DC;" onclick="setTheme('sepia')"></div>
-            <div class="dot" style="background:#ffffff;" onclick="setTheme('white')"></div>
-            <div class="dot" style="background:#1a1a1a;" onclick="setTheme('dark')"></div>
-        </div>
-    </div>
-    <button class="btn" style="width:100%; margin-top:10px;" onclick="toggleSettings()">关闭设置</button>
-</div>
-
-<script>
-    const CONFIG = {
-        STORAGE_KEY_PREFIX: 'min_reader_pos_',
-        LAST_FILE: 'min_reader_last_file',
-        FONT_SIZE: 'min_reader_font_size',
-        THEME: 'min_reader_theme'
-    };
-
-    let fullText = "";
-    let currentFileName = "";
-    let pages = [];
-    let currentPageIndex = 0;
-
-    // 初始化设置
-    window.onload = () => {
-        const savedSize = localStorage.getItem(CONFIG.FONT_SIZE) || 20;
-        document.documentElement.style.setProperty('--font-size', savedSize + 'px');
-        document.getElementById('font-size-val').textContent = savedSize;
-        
-        const savedTheme = localStorage.getItem(CONFIG.THEME) || 'sepia';
-        setTheme(savedTheme);
-
-        const lastFile = localStorage.getItem(CONFIG.LAST_FILE);
-        if(lastFile) document.getElementById('last-info').textContent = "上次阅读: " + lastFile;
-    };
-
-    // 1. 文件处理
-    document.getElementById('file-input').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const buffer = await file.arrayBuffer();
-        const decoder = new TextDecoder(detectEncoding(new Uint8Array(buffer)));
-        fullText = decoder.decode(buffer).replace(/\r\n/g, '\n');
-        
-        currentFileName = file.name;
-        document.getElementById('upload-overlay').style.display = 'none';
-        document.getElementById('file-name').textContent = currentFileName;
-        localStorage.setItem(CONFIG.LAST_FILE, currentFileName);
-
-        paginate();
-        const savedOffset = localStorage.getItem(CONFIG.STORAGE_KEY_PREFIX + currentFileName);
-        jumpToOffset(savedOffset ? parseInt(savedOffset) : 0);
-    });
-
-    function detectEncoding(bytes) {
-        let isUtf8 = true;
-        for (let i = 0; i < Math.min(bytes.length, 1000); i++) {
-            if (bytes[i] > 0x7F) {
-                if ((bytes[i] & 0xE0) === 0xC0 && (bytes[i+1] & 0xC0) === 0x80) { i++; continue; }
-                if ((bytes[i] & 0xF0) === 0xE0 && (bytes[i+1] & 0xC0) === 0x80 && (bytes[i+2] & 0xC0) === 0x80) { i+=2; continue; }
-                isUtf8 = false; break;
-            }
+        // --- IndexedDB 逻辑 ---
+        async function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve();
+                };
+                request.onerror = reject;
+            });
         }
-        return isUtf8 ? 'utf-8' : 'gbk';
-    }
 
-    // 2. 分页逻辑
-    function paginate() {
-        const container = document.getElementById('reader-content');
-        const h = container.clientHeight - 40;
-        const w = container.clientWidth - 50;
-        
-        const temp = document.createElement('div');
-        temp.style.cssText = `visibility:hidden;position:absolute;width:${w}px;font-size:var(--font-size);line-height:var(--line-height);white-space:pre-wrap;word-wrap:break-word;`;
-        document.body.appendChild(temp);
+        async function saveBook(name, content, offset) {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put({ id: 'current', name, content, offset });
+            return tx.complete;
+        }
 
-        pages = [];
-        let start = 0;
-        while (start < fullText.length) {
-            let l = start, r = start + 3000; 
-            let bestEnd = start + 1;
-            while (l <= r) {
-                let mid = Math.floor((l + r) / 2);
-                temp.textContent = fullText.substring(start, mid);
-                if (temp.clientHeight <= h) {
-                    bestEnd = mid;
-                    l = mid + 1;
-                } else {
-                    r = mid - 1;
+        async function loadBook() {
+            return new Promise((resolve) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const request = tx.objectStore(STORE_NAME).get('current');
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => resolve(null);
+            });
+        }
+
+        // --- 阅读逻辑 ---
+        const fileInput = document.getElementById('file-input');
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const readerScreen = document.getElementById('reader-screen');
+        const contentArea = document.getElementById('content-area');
+        const titleEl = document.getElementById('book-title');
+        const progressEl = document.getElementById('progress-pct');
+
+        window.onload = async () => {
+            await initDB();
+            const lastBook = await loadBook();
+            if (lastBook) {
+                startReading(lastBook.name, lastBook.content, lastBook.offset);
+            }
+
+            // 注册 SW
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js');
+            }
+        };
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const buffer = event.target.result;
+                // 检测编码
+                const decoderUtf8 = new TextDecoder('utf-8');
+                const contentUtf8 = decoderUtf8.decode(buffer);
+                
+                // 如果出现乱码特征（简单的启发式检测），尝试 GBK
+                let finalContent = contentUtf8;
+                if (contentUtf8.includes('')) {
+                    const decoderGbk = new TextDecoder('gbk');
+                    finalContent = decoderGbk.decode(buffer);
                 }
+
+                startReading(file.name, finalContent, 0);
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function startReading(name, content, offset) {
+            currentContent = content;
+            currentFileName = name;
+            currentOffset = offset || 0;
+
+            welcomeScreen.style.display = 'none';
+            readerScreen.style.display = 'block';
+            titleEl.textContent = name;
+
+            // 延迟以确保 DOM 尺寸可用
+            setTimeout(() => {
+                paginate();
+                renderPageByOffset(currentOffset);
+            }, 100);
+        }
+
+        // 分页逻辑
+        function paginate() {
+            // 获取容器能容纳多少文字
+            // 简单实现：由于每一页高度固定，我们根据实际渲染高度来分割
+            // 进阶版会动态计算，此处使用“虚拟测量”法
+            pages = [];
+            const containerWidth = contentArea.clientWidth;
+            const containerHeight = contentArea.clientHeight;
+            
+            // 估计每页字符数 (性能优化：不进行逐字 DOM 计算，而是预估后再微调)
+            // 也可以采用更精确的偏移量记录
+        }
+
+        // 核心：基于偏移量的精准渲染
+        function renderPageByOffset(offset) {
+            contentArea.innerHTML = '';
+            let tempText = currentContent.substring(offset);
+            
+            // 将文字填入容器直到溢出
+            contentArea.textContent = tempText;
+            
+            // 如果溢出了，截断
+            if (contentArea.scrollHeight > contentArea.clientHeight) {
+                let low = 0;
+                let high = tempText.length;
+                let mid;
+                
+                // 二分查找最合适的位置
+                while (low < high) {
+                    mid = Math.floor((low + high) / 2);
+                    contentArea.textContent = tempText.substring(0, mid);
+                    if (contentArea.scrollHeight <= contentArea.clientHeight) {
+                        low = mid + 1;
+                    } else {
+                        high = mid;
+                    }
+                }
+                contentArea.textContent = tempText.substring(0, low - 1);
+                currentOffset = offset;
+                updateProgress(offset);
+                saveBook(currentFileName, currentContent, offset);
             }
-            pages.push({ start, end: bestEnd });
-            start = bestEnd;
         }
-        document.body.removeChild(temp);
-    }
 
-    function renderPage(idx) {
-        if (idx < 0 || idx >= pages.length) return;
-        currentPageIndex = idx;
-        const p = pages[idx];
-        document.getElementById('text-display').textContent = fullText.substring(p.start, p.end);
-        document.getElementById('page-info').textContent = Math.round((idx+1)/pages.length*100) + "%";
-        localStorage.setItem(CONFIG.STORAGE_KEY_PREFIX + currentFileName, p.start);
-    }
-
-    function jumpToOffset(offset) {
-        const idx = pages.findIndex(p => offset >= p.start && offset < p.end);
-        renderPage(idx !== -1 ? idx : 0);
-    }
-
-    // 3. 设置功能
-    function toggleSettings() {
-        document.getElementById('settings-panel').classList.toggle('active');
-    }
-
-    function changeFontSize(delta) {
-        let size = parseInt(document.getElementById('font-size-val').textContent) + delta;
-        size = Math.max(12, Math.min(40, size));
-        document.getElementById('font-size-val').textContent = size;
-        document.documentElement.style.setProperty('--font-size', size + 'px');
-        localStorage.setItem(CONFIG.FONT_SIZE, size);
-        if(fullText) {
-            const offset = pages[currentPageIndex].start;
-            paginate();
-            jumpToOffset(offset);
+        function updateProgress(offset) {
+            const pct = ((offset / currentContent.length) * 100).toFixed(1);
+            progressEl.textContent = `${pct}%`;
         }
-    }
 
-    function setTheme(type) {
-        document.body.classList.remove('dark-mode');
-        if (type === 'sepia') document.documentElement.style.setProperty('--bg-color', '#F5F5DC');
-        if (type === 'white') document.documentElement.style.setProperty('--bg-color', '#ffffff');
-        if (type === 'dark') document.body.classList.add('dark-mode');
-        localStorage.setItem(CONFIG.THEME, type);
-    }
+        // 翻页交互
+        document.getElementById('next-zone').addEventListener('click', () => {
+            const visibleTextLen = contentArea.textContent.length;
+            if (currentOffset + visibleTextLen < currentContent.length) {
+                renderPageByOffset(currentOffset + visibleTextLen);
+            }
+        });
 
-    // 4. 事件绑定
-    document.getElementById('prev-zone').onclick = () => renderPage(currentPageIndex - 1);
-    document.getElementById('next-zone').onclick = () => renderPage(currentPageIndex + 1);
-    document.getElementById('mid-zone').onclick = toggleSettings;
+        document.getElementById('prev-zone').addEventListener('click', () => {
+            // 往前翻页比较复杂（不知道前一页起点），简单做法是回退约一个屏幕的字符量重新计算
+            const step = 800; // 预估一屏字符
+            let target = Math.max(0, currentOffset - step);
+            renderPageByOffset(target);
+        });
 
-    // 阻止回弹
-    document.addEventListener('touchmove', e => { if(e.touches.length==1) e.preventDefault(); }, {passive:false});
-</script>
+        document.getElementById('back-btn').addEventListener('click', () => {
+            if(confirm('确定要切换文档吗？当前进度已保存。')) {
+                welcomeScreen.style.display = 'flex';
+                readerScreen.style.display = 'none';
+            }
+        });
+
+        // 防止 iOS 橡皮筋
+        document.addEventListener('touchmove', (e) => {
+            if (e.scale !== 1) e.preventDefault();
+        }, { passive: false });
+    </script>
 </body>
 </html>
