@@ -4,20 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="极简阅读">
     <title>Minimal Reader</title>
+    <!-- PWA Manifest Link -->
+    <link rel="manifest" href="data:application/manifest+json;base64,ewogICJuYW1lIjogIk1pbmltYWwgUmVhZGVyIiwKICAic2hvcnRfbmFtZSI6ICLpmoXpmoUiLAogICJzdGFydF91cmwiOiAiLiIsCiAgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsCiAgImJhY2tncm91bmRfY29sb3IiOiAiI0Y1RjVEQyIsCiAgInRoZW1lX2NvbG9yIjogIiNGNUY1REMiLAogICJpY29ucyI6IFsKICAgIHsKICAgICAgInNyYyI6ICJkYXRhOmltYWdlL3BuZztiYXNlNjQsaVZCT1J3MEtHZ29BQUFBTlNVaEVVZ0FBQUdBQUFBQW9DQVlBQUFDeE03T0tBQUFBQVhOU1IwSUFyczRjNlFBQUFBUm5RVTFCQUFDeGp3djhZUVVBQUFBSmNFaFpjd0FBRHNNQUFBN0RBYmRkYm9BQUFBRkpSRUZVZU5qNFl6QitnMzhBQUFBTFJRQUEiLAogICAgICAic2l6ZXMiOiAiMTkyeDE5MiIsCiAgICAgICJ0eXBlIjogImltYWdlL3BuZyIsCiAgICAgICJwdXJwb3NlIjogImFueSBtYXNrYWJsZSIKICAgIH0KICBdCn0=">
     <style>
         :root {
             --bg-color: #F5F5DC;
             --text-color: #333333;
-            --safe-top: env(safe-area-inset-top);
-            --safe-bottom: env(safe-area-inset-bottom);
+            --accent-color: #5D5D5D;
         }
 
+        /* 禁止所有弹性回弹和缩放 */
         * {
-            box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+            user-select: none;
         }
 
         body, html {
@@ -25,295 +28,370 @@
             padding: 0;
             width: 100%;
             height: 100%;
-            overflow: hidden; /* 禁止橡皮筋效果 */
+            overflow: hidden;
             background-color: var(--bg-color);
-            font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
             color: var(--text-color);
+            overscroll-behavior: none;
+            touch-action: none;
         }
 
-        /* 欢迎页面 */
-        #welcome-screen {
+        /* 适配 iOS 安全区域 */
+        #app {
             display: flex;
             flex-direction: column;
-            align-items: center;
+            width: 100%;
+            height: 100%;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+
+        /* 初始上传界面 */
+        #upload-screen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
             justify-content: center;
-            height: 100vh;
-            padding: 20px;
+            align-items: center;
             text-align: center;
+            padding: 20px;
         }
 
         .upload-btn {
-            background-color: var(--text-color);
+            background: var(--text-color);
             color: var(--bg-color);
             padding: 15px 40px;
-            border-radius: 25px;
+            border-radius: 30px;
             font-size: 18px;
-            cursor: pointer;
             border: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
         }
 
         /* 阅读界面 */
         #reader-screen {
             display: none;
+            flex: 1;
+            flex-direction: column;
             position: relative;
-            width: 100vw;
-            height: 100vh;
-            padding: calc(var(--safe-top) + 20px) 20px calc(var(--safe-bottom) + 20px) 20px;
+            height: 100%;
         }
 
         #content-area {
-            width: 100%;
-            height: 100%;
+            flex: 1;
+            padding: 20px;
             font-size: 20px;
             line-height: 1.6;
             overflow: hidden;
-            word-break: break-all;
             text-align: justify;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
 
-        /* 交互层 */
-        #interaction-layer {
+        /* 交互区域提示 */
+        #tap-zones {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 10;
             display: flex;
+            z-index: 10;
         }
+        .zone-prev { width: 30%; }
+        .zone-next { width: 70%; }
 
-        #prev-zone { width: 30%; height: 100%; }
-        #next-zone { width: 70%; height: 100%; }
-
-        /* 顶部/底部信息 */
-        #meta-info {
-            position: absolute;
-            bottom: var(--safe-bottom);
-            left: 0;
-            width: 100%;
-            padding: 5px 20px;
-            font-size: 12px;
-            color: #888;
+        /* 底部状态栏 */
+        #footer {
+            height: 40px;
             display: flex;
             justify-content: space-between;
-            pointer-events: none;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 12px;
+            color: var(--accent-color);
+            border-top: 0.5px solid rgba(0,0,0,0.05);
         }
 
-        #back-btn {
-            position: absolute;
-            top: var(--safe-top);
-            right: 20px;
-            font-size: 14px;
-            color: #888;
-            padding: 10px;
-            z-index: 20;
-            text-decoration: underline;
+        .back-btn {
+            padding: 5px 10px;
+            border: 0.5px solid var(--accent-color);
+            border-radius: 4px;
         }
 
-        .hidden { display: none !important; }
+        /* 加载中遮罩 */
+        #loader {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(245, 245, 220, 0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        /* 隐藏的文件输入框 */
+        #file-input { display: none; }
     </style>
 </head>
 <body>
 
-    <div id="welcome-screen">
-        <h1>Minimal Reader</h1>
-        <p style="color: #666; margin-bottom: 30px;">点击下方按钮导入 TXT 文档</p>
-        <input type="file" id="file-input" accept=".txt" style="display: none;">
-        <button class="upload-btn" onclick="document.getElementById('file-input').click()">选择文件</button>
+<div id="app">
+    <div id="upload-screen">
+        <h1 style="margin-bottom: 40px; font-weight: 300;">Minimal Reader</h1>
+        <button class="upload-btn" onclick="document.getElementById('file-input').click()">选择 TXT 文件</button>
+        <p style="margin-top: 20px; font-size: 14px; color: #888;">支持 UTF-8 / GBK 编码</p>
+        <input type="file" id="file-input" accept=".txt">
     </div>
 
     <div id="reader-screen">
-        <div id="back-btn">切换文档</div>
-        <div id="content-area"></div>
-        <div id="interaction-layer">
-            <div id="prev-zone"></div>
-            <div id="next-zone"></div>
+        <div id="tap-zones">
+            <div class="zone-prev" id="btn-prev"></div>
+            <div class="zone-next" id="btn-next"></div>
         </div>
-        <div id="meta-info">
-            <span id="book-title"></span>
-            <span id="progress-pct">0%</span>
+        <div id="content-area"></div>
+        <div id="footer">
+            <div class="back-btn" onclick="goBack()">返回</div>
+            <div id="progress-info">0%</div>
+            <div id="page-info">第 0 页</div>
         </div>
     </div>
+</div>
 
-    <script>
-        const DB_NAME = 'ReaderDB';
-        const STORE_NAME = 'books';
-        let db;
-        let currentContent = '';
-        let currentFileName = '';
-        let currentOffset = 0;
-        let pages = [];
-        let currentPageIndex = 0;
+<div id="loader">加载中...</div>
 
-        // --- IndexedDB 逻辑 ---
-        async function initDB() {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open(DB_NAME, 1);
-                request.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-                    }
-                };
-                request.onsuccess = (e) => {
-                    db = e.target.result;
-                    resolve();
-                };
-                request.onerror = reject;
-            });
-        }
+<script>
+    /**
+     * 极简阅读器核心逻辑
+     */
+    const DB_NAME = 'MinimalReaderDB';
+    const STORE_NAME = 'documents';
+    let db;
+    let currentDoc = {
+        name: '',
+        text: '',
+        offset: 0
+    };
 
-        async function saveBook(name, content, offset) {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            tx.objectStore(STORE_NAME).put({ id: 'current', name, content, offset });
-            return tx.complete;
-        }
+    const UI = {
+        upload: document.getElementById('upload-screen'),
+        reader: document.getElementById('reader-screen'),
+        content: document.getElementById('content-area'),
+        fileInput: document.getElementById('file-input'),
+        progress: document.getElementById('progress-info'),
+        page: document.getElementById('page-info'),
+        loader: document.getElementById('loader')
+    };
 
-        async function loadBook() {
-            return new Promise((resolve) => {
-                const tx = db.transaction(STORE_NAME, 'readonly');
-                const request = tx.objectStore(STORE_NAME).get('current');
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => resolve(null);
-            });
-        }
-
-        // --- 阅读逻辑 ---
-        const fileInput = document.getElementById('file-input');
-        const welcomeScreen = document.getElementById('welcome-screen');
-        const readerScreen = document.getElementById('reader-screen');
-        const contentArea = document.getElementById('content-area');
-        const titleEl = document.getElementById('book-title');
-        const progressEl = document.getElementById('progress-pct');
-
-        window.onload = async () => {
-            await initDB();
-            const lastBook = await loadBook();
-            if (lastBook) {
-                startReading(lastBook.name, lastBook.content, lastBook.offset);
-            }
-
-            // 注册 SW
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('sw.js');
-            }
-        };
-
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const buffer = event.target.result;
-                // 检测编码
-                const decoderUtf8 = new TextDecoder('utf-8');
-                const contentUtf8 = decoderUtf8.decode(buffer);
-                
-                // 如果出现乱码特征（简单的启发式检测），尝试 GBK
-                let finalContent = contentUtf8;
-                if (contentUtf8.includes('')) {
-                    const decoderGbk = new TextDecoder('gbk');
-                    finalContent = decoderGbk.decode(buffer);
-                }
-
-                startReading(file.name, finalContent, 0);
+    // 1. 初始化数据库
+    async function initDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, 1);
+            request.onerror = () => reject();
+            request.onsuccess = (e) => {
+                db = e.target.result;
+                resolve();
             };
-            reader.readAsArrayBuffer(file);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                db.createObjectStore(STORE_NAME, { keyPath: 'name' });
+            };
         });
+    }
 
-        function startReading(name, content, offset) {
-            currentContent = content;
-            currentFileName = name;
-            currentOffset = offset || 0;
+    // 2. 文本编码自动检测与加载
+    async function handleFile(file) {
+        if (!file) return;
+        showLoader(true);
+        
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const buffer = e.target.result;
+            // 尝试检测编码：简单逻辑，寻找是否存在乱码标志
+            let text = new TextDecoder('utf-8').decode(buffer);
+            if (text.includes('')) {
+                text = new TextDecoder('gbk').decode(buffer);
+            }
 
-            welcomeScreen.style.display = 'none';
-            readerScreen.style.display = 'block';
-            titleEl.textContent = name;
+            currentDoc = {
+                name: file.name,
+                text: text,
+                offset: parseInt(localStorage.getItem('offset_' + file.name)) || 0
+            };
 
-            // 延迟以确保 DOM 尺寸可用
-            setTimeout(() => {
-                paginate();
-                renderPageByOffset(currentOffset);
-            }, 100);
+            await saveToDB(currentDoc);
+            renderReader();
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // 3. 渲染阅读模式
+    function renderReader() {
+        UI.upload.style.display = 'none';
+        UI.reader.style.display = 'flex';
+        showPage();
+        showLoader(false);
+    }
+
+    // 4. 分页逻辑 (核心优化)
+    function showPage() {
+        const containerHeight = UI.content.clientHeight;
+        const tempDiv = document.createElement('div');
+        tempDiv.style.visibility = 'hidden';
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.width = UI.content.clientWidth + 'px';
+        tempDiv.style.fontSize = getComputedStyle(UI.content).fontSize;
+        tempDiv.style.lineHeight = getComputedStyle(UI.content).lineHeight;
+        tempDiv.style.whiteSpace = 'pre-wrap';
+        tempDiv.style.wordWrap = 'break-word';
+        document.body.appendChild(tempDiv);
+
+        let start = currentDoc.offset;
+        let end = start;
+        let lastSafeEnd = start;
+
+        // 逐步增加字符，直到填满高度
+        // 优化：先取一大块，再回退，比一个一个加快
+        let step = 500; 
+        while (tempDiv.clientHeight <= containerHeight && end < currentDoc.text.length) {
+            lastSafeEnd = end;
+            end += step;
+            tempDiv.innerText = currentDoc.text.substring(start, end);
+        }
+        
+        // 细化回溯
+        end = lastSafeEnd;
+        while (tempDiv.clientHeight <= containerHeight && end < currentDoc.text.length) {
+            lastSafeEnd = end;
+            end += 1;
+            tempDiv.innerText = currentDoc.text.substring(start, end);
+        }
+        
+        const pageText = currentDoc.text.substring(start, lastSafeEnd);
+        UI.content.innerText = pageText;
+        document.body.removeChild(tempDiv);
+
+        // 更新状态
+        const progress = ((lastSafeEnd / currentDoc.text.length) * 100).toFixed(1);
+        UI.progress.innerText = progress + '%';
+        
+        // 保存记忆
+        localStorage.setItem('offset_' + currentDoc.name, start);
+        localStorage.setItem('last_file', currentDoc.name);
+    }
+
+    function nextPage() {
+        // 当前页结束的位置
+        const containerHeight = UI.content.clientHeight;
+        const tempDiv = document.createElement('div');
+        tempDiv.style.visibility = 'hidden';
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.width = UI.content.clientWidth + 'px';
+        tempDiv.style.fontSize = getComputedStyle(UI.content).fontSize;
+        tempDiv.style.lineHeight = getComputedStyle(UI.content).lineHeight;
+        tempDiv.style.whiteSpace = 'pre-wrap';
+        document.body.appendChild(tempDiv);
+
+        let end = currentDoc.offset;
+        while (tempDiv.clientHeight <= containerHeight && end < currentDoc.text.length) {
+            end += 10; // 粗略步进
+            tempDiv.innerText = currentDoc.text.substring(currentDoc.offset, end);
+        }
+        
+        // 回退到刚好不溢出
+        while (tempDiv.clientHeight > containerHeight && end > currentDoc.offset) {
+            end -= 1;
+            tempDiv.innerText = currentDoc.text.substring(currentDoc.offset, end);
         }
 
-        // 分页逻辑
-        function paginate() {
-            // 获取容器能容纳多少文字
-            // 简单实现：由于每一页高度固定，我们根据实际渲染高度来分割
-            // 进阶版会动态计算，此处使用“虚拟测量”法
-            pages = [];
-            const containerWidth = contentArea.clientWidth;
-            const containerHeight = contentArea.clientHeight;
-            
-            // 估计每页字符数 (性能优化：不进行逐字 DOM 计算，而是预估后再微调)
-            // 也可以采用更精确的偏移量记录
+        if (end < currentDoc.text.length) {
+            currentDoc.offset = end;
+            showPage();
         }
+        document.body.removeChild(tempDiv);
+    }
 
-        // 核心：基于偏移量的精准渲染
-        function renderPageByOffset(offset) {
-            contentArea.innerHTML = '';
-            let tempText = currentContent.substring(offset);
-            
-            // 将文字填入容器直到溢出
-            contentArea.textContent = tempText;
-            
-            // 如果溢出了，截断
-            if (contentArea.scrollHeight > contentArea.clientHeight) {
-                let low = 0;
-                let high = tempText.length;
-                let mid;
-                
-                // 二分查找最合适的位置
-                while (low < high) {
-                    mid = Math.floor((low + high) / 2);
-                    contentArea.textContent = tempText.substring(0, mid);
-                    if (contentArea.scrollHeight <= contentArea.clientHeight) {
-                        low = mid + 1;
-                    } else {
-                        high = mid;
-                    }
-                }
-                contentArea.textContent = tempText.substring(0, low - 1);
-                currentOffset = offset;
-                updateProgress(offset);
-                saveBook(currentFileName, currentContent, offset);
+    function prevPage() {
+        if (currentDoc.offset <= 0) return;
+        
+        // 向上翻页比较复杂：需要估算前一页起点
+        // 简单策略：向前跳固定字符量，然后重新计算该位置开始的一页
+        const containerHeight = UI.content.clientHeight;
+        const charsPerPageApprox = UI.content.innerText.length || 500;
+        let targetStart = Math.max(0, currentDoc.offset - charsPerPageApprox);
+        
+        currentDoc.offset = targetStart;
+        showPage();
+    }
+
+    // 5. 存储辅助
+    async function saveToDB(doc) {
+        return new Promise((resolve) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(doc);
+            tx.oncomplete = () => resolve();
+        });
+    }
+
+    async function loadFromDB(name) {
+        return new Promise((resolve) => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const request = tx.objectStore(STORE_NAME).get(name);
+            request.onsuccess = () => resolve(request.result);
+        });
+    }
+
+    function goBack() {
+        UI.reader.style.display = 'none';
+        UI.upload.style.display = 'flex';
+        localStorage.removeItem('last_file');
+    }
+
+    function showLoader(val) {
+        UI.loader.style.display = val ? 'flex' : 'none';
+    }
+
+    // 6. 事件绑定
+    window.onload = async () => {
+        await initDB();
+
+        // 尝试恢复上次阅读
+        const lastFile = localStorage.getItem('last_file');
+        if (lastFile) {
+            const saved = await loadFromDB(lastFile);
+            if (saved) {
+                currentDoc = saved;
+                currentDoc.offset = parseInt(localStorage.getItem('offset_' + lastFile)) || 0;
+                renderReader();
             }
         }
 
-        function updateProgress(offset) {
-            const pct = ((offset / currentContent.length) * 100).toFixed(1);
-            progressEl.textContent = `${pct}%`;
+        UI.fileInput.onchange = (e) => handleFile(e.target.files[0]);
+        
+        document.getElementById('btn-next').onclick = nextPage;
+        document.getElementById('btn-prev').onclick = prevPage;
+
+        // 注册 Service Worker (Inline)
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                const CACHE_NAME = 'min-reader-v1';
+                self.addEventListener('install', e => {
+                    e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['./'])));
+                });
+                self.addEventListener('fetch', e => {
+                    e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
+                });
+            `;
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+            navigator.serviceWorker.register(swUrl).catch(() => {});
         }
+    };
 
-        // 翻页交互
-        document.getElementById('next-zone').addEventListener('click', () => {
-            const visibleTextLen = contentArea.textContent.length;
-            if (currentOffset + visibleTextLen < currentContent.length) {
-                renderPageByOffset(currentOffset + visibleTextLen);
-            }
-        });
-
-        document.getElementById('prev-zone').addEventListener('click', () => {
-            // 往前翻页比较复杂（不知道前一页起点），简单做法是回退约一个屏幕的字符量重新计算
-            const step = 800; // 预估一屏字符
-            let target = Math.max(0, currentOffset - step);
-            renderPageByOffset(target);
-        });
-
-        document.getElementById('back-btn').addEventListener('click', () => {
-            if(confirm('确定要切换文档吗？当前进度已保存。')) {
-                welcomeScreen.style.display = 'flex';
-                readerScreen.style.display = 'none';
-            }
-        });
-
-        // 防止 iOS 橡皮筋
-        document.addEventListener('touchmove', (e) => {
-            if (e.scale !== 1) e.preventDefault();
-        }, { passive: false });
-    </script>
+    // 禁止双击缩放
+    document.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+</script>
 </body>
 </html>
